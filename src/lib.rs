@@ -40,6 +40,7 @@ pub mod windefs {
     pub type LPVoid = winapi::shared::minwindef::LPVOID;
     pub type WChar = winapi::shared::ntdef::WCHAR;
     pub type Word = winapi::shared::minwindef::WORD;
+    pub type HResult = winapi::shared::ntdef::HRESULT;
 
     pub type Guid = winapi::shared::guiddef::GUID;
     pub type Acl = winapi::um::winnt::ACL;
