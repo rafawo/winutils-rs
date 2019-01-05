@@ -33,7 +33,9 @@ pub mod windefs {
     pub type LargeInteger = winapi::shared::ntdef::LARGE_INTEGER;
     pub type Handle = winapi::shared::ntdef::HANDLE;
     pub type PCWStr = winapi::shared::ntdef::PCWSTR;
+    pub type LPCWStr = winapi::shared::ntdef::LPCWSTR;
     pub type PWStr = winapi::shared::ntdef::PWSTR;
+    pub type LPWStr = winapi::shared::ntdef::LPWSTR;
     pub type UChar = winapi::shared::ntdef::UCHAR;
     pub type Void = winapi::shared::ntdef::VOID;
     pub type PVoid = winapi::shared::ntdef::PVOID;
