@@ -523,3 +523,33 @@ extern "C" {
         pszMore: PCWStr,
     ) -> winapi::shared::ntdef::HRESULT;
 }
+
+pub struct CoTaskMemWString {
+    pub ptr: *mut PWStr,
+}
+
+impl std::ops::Drop for CoTaskMemWString {
+    fn drop(&mut self) {
+        unsafe {
+            winapi::um::combaseapi::CoTaskMemFree(self.ptr as LPVoid);
+        }
+    }
+}
+
+impl CoTaskMemWString {
+    pub fn new() -> CoTaskMemWString {
+        CoTaskMemWString {
+            ptr: std::ptr::null_mut(),
+        }
+    }
+
+    /// This function creates a String representation of the underlying WSTR
+    pub fn to_string(&mut self) -> String {
+        match self.ptr {
+            ptr if ptr != std::ptr::null_mut() => unsafe {
+                widestring::WideCString::from_ptr_str(*self.ptr).to_string_lossy()
+            },
+            _ => String::from(""),
+        }
+    }
+}
