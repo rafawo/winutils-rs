@@ -9,6 +9,8 @@
 use crate::errorcodes::{error_code_to_result_code, ResultCode};
 use crate::windefs::*;
 
+/// Closes a handle using windows CloseHandle API.
+/// This function panics on failure.
 pub fn close_handle(handle: &mut Handle) {
     if *handle == std::ptr::null_mut() {
         return;
@@ -31,6 +33,7 @@ pub fn close_handle(handle: &mut Handle) {
     }
 }
 
+/// Rust wrapper of windows CreateFile API.
 pub fn create_file(
     path: &str,
     access_mask: DWord,
@@ -68,6 +71,7 @@ pub fn create_file(
     }
 }
 
+/// Returns whether two Guids are equal.
 pub fn guid_are_equal(left: &Guid, right: &Guid) -> bool {
     left.Data1 == right.Data1
         && left.Data2 == right.Data2
@@ -94,6 +98,8 @@ extern "C" {
     ) -> DWord;
 }
 
+/// Rust abstraction of a CMNOTIFICATION.
+/// On drop, it automatically unregisters the notification (panics on error).
 pub struct CmNotification {
     handle: winapi::um::cfgmgr32::HCMNOTIFICATION,
 }
@@ -117,6 +123,7 @@ impl std::ops::Drop for CmNotification {
 }
 
 impl CmNotification {
+    /// Register a new CMNOTIFICATION.
     pub fn register(
         filter: winapi::um::cfgmgr32::PCM_NOTIFY_FILTER,
         context: PVoid,
@@ -138,6 +145,7 @@ impl CmNotification {
     }
 }
 
+/// Common possible results from waiting on a single event.
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum WinEventResult {
@@ -146,6 +154,8 @@ pub enum WinEventResult {
     WaitFailed(ResultCode),
 }
 
+/// Thin Rust abstraction of a Windows EVENT.
+/// On drop, closes the underlying handle.
 pub struct WinEvent {
     handle: Handle,
 }
@@ -157,10 +167,13 @@ impl std::ops::Drop for WinEvent {
 }
 
 impl WinEvent {
+    /// Returns the wrapped handle.
     pub fn get_handle(&self) -> Handle {
         self.handle.clone()
     }
 
+    /// Creates a new windows EVENT, which can be configured to be named,
+    /// manual reset, initial state and attributes as desired.
     pub fn create(
         manual_reset: bool,
         initial_state: bool,
@@ -209,6 +222,7 @@ impl WinEvent {
         }
     }
 
+    /// Opens a named windows EVENT.
     pub fn open(
         name: &str,
         desired_access: DWord,
@@ -235,6 +249,7 @@ impl WinEvent {
         }
     }
 
+    /// Sets a Windows EVENT.
     pub fn set(&self) -> Result<(), ResultCode> {
         unsafe {
             match winapi::um::synchapi::SetEvent(self.handle) {
@@ -248,6 +263,7 @@ impl WinEvent {
         }
     }
 
+    /// Resets a Windows EVENT.
     pub fn reset(&self) -> Result<(), ResultCode> {
         unsafe {
             match winapi::um::synchapi::ResetEvent(self.handle) {
@@ -261,6 +277,7 @@ impl WinEvent {
         }
     }
 
+    /// Pulses a Windows EVENT.
     pub fn pulse(&self) -> Result<(), ResultCode> {
         unsafe {
             match winapi::um::winbase::PulseEvent(self.handle) {
@@ -274,6 +291,7 @@ impl WinEvent {
         }
     }
 
+    /// Waits for a period of time for a Windows EVENT to be signalled.
     pub fn wait(&self, milliseconds: DWord) -> WinEventResult {
         unsafe {
             match winapi::um::synchapi::WaitForSingleObject(self.handle, milliseconds) {
@@ -290,6 +308,8 @@ impl WinEvent {
     }
 }
 
+/// Thin Rust wrapper of a Windows HMODULE.
+/// On drop frees the library, panics on failure.
 pub struct WinLibrary {
     handle: winapi::shared::minwindef::HMODULE,
 }
@@ -311,6 +331,7 @@ impl std::ops::Drop for WinLibrary {
 }
 
 impl WinLibrary {
+    /// Loads a library by name with the supplied flags.
     pub fn load(lib_file_name: &str, flags: DWord) -> Result<WinLibrary, ResultCode> {
         unsafe {
             match winapi::um::libloaderapi::LoadLibraryExW(
@@ -328,6 +349,7 @@ impl WinLibrary {
         }
     }
 
+    /// Returns the process address by name on the loaded library.
     pub fn proc_address(
         &self,
         proc_name: &str,
@@ -356,6 +378,7 @@ extern "C" {
     ) -> winapi::shared::rpc::RPC_STATUS;
 }
 
+/// Creates a new GUID.
 pub fn create_guid() -> Result<Guid, ResultCode> {
     let mut guid: Guid = GUID_NULL;
     unsafe {
@@ -366,6 +389,7 @@ pub fn create_guid() -> Result<Guid, ResultCode> {
     }
 }
 
+/// Parses the given string to a GUID.
 pub fn parse_guid(guid_string: &str) -> Result<Guid, ResultCode> {
     let mut guid: Guid = GUID_NULL;
     unsafe {
@@ -382,6 +406,7 @@ pub fn parse_guid(guid_string: &str) -> Result<Guid, ResultCode> {
     }
 }
 
+/// Enables a privilege in the current thread.
 pub fn enable_privilege(
     token_handle: Handle,
     id: &winapi::um::winnt::LUID,
@@ -420,6 +445,8 @@ pub fn enable_privilege(
     }
 }
 
+/// Thin Rust wrapper of a "temporary" privilege, which is reverted back to the original
+/// thread's token on drop. Panics on failure.
 pub struct TemporaryPrivilege {
     privilege: winapi::um::winnt::LUID,
     token_handle: Handle,
@@ -446,6 +473,7 @@ impl std::ops::Drop for TemporaryPrivilege {
 }
 
 impl TemporaryPrivilege {
+    /// Creates a new "temporary" privilege.
     pub fn new(privilege_name: &str) -> Result<TemporaryPrivilege, ResultCode> {
         use winapi::um::{errhandlingapi, processthreadsapi, securitybaseapi, winbase, winnt};
 
@@ -524,6 +552,10 @@ extern "C" {
     ) -> winapi::shared::ntdef::HRESULT;
 }
 
+/// Thin Rust wrapper of a WSTR pointer that can be used to
+/// receive return parameters from windows API that use CoTaskMemAlloc
+/// under the covers.
+/// On drop, frees the memory using CoTaskMemFree.
 pub struct CoTaskMemWString {
     pub ptr: *mut PWStr,
 }
@@ -537,13 +569,14 @@ impl std::ops::Drop for CoTaskMemWString {
 }
 
 impl CoTaskMemWString {
+    /// Creates a new empty CoTaskMemWString, with its pointer initialized to null.
     pub fn new() -> CoTaskMemWString {
         CoTaskMemWString {
             ptr: std::ptr::null_mut(),
         }
     }
 
-    /// This function creates a String representation of the underlying WSTR
+    /// This function creates a String representation of the underlying WSTR.
     pub fn to_string(&self) -> String {
         match self.ptr {
             ptr if ptr != std::ptr::null_mut() => unsafe {
