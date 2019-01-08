@@ -544,7 +544,7 @@ impl CoTaskMemWString {
     }
 
     /// This function creates a String representation of the underlying WSTR
-    pub fn to_string(&mut self) -> String {
+    pub fn to_string(&self) -> String {
         match self.ptr {
             ptr if ptr != std::ptr::null_mut() => unsafe {
                 widestring::WideCString::from_ptr_str(*self.ptr).to_string_lossy()
