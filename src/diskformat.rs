@@ -7,8 +7,8 @@
 // THE SOURCE CODE IS AVAILABLE UNDER THE ABOVE CHOSEN LICENSE "AS IS", WITH NO WARRANTIES.
 
 use crate::errorcodes::{error_code_to_result_code, ResultCode};
-use crate::windefs::*;
 use crate::utilities::WinEvent;
+use crate::windefs::*;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
