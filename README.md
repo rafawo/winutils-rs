@@ -1,5 +1,5 @@
-# virtdisk-rs
-Rust wrapper of VirtDisk APIs
+# winutils-rs
+Rust abstractions of random Windows API and definitions
 
 ## Overview
 
