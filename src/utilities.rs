@@ -586,3 +586,38 @@ impl CoTaskMemWString {
         }
     }
 }
+
+/// Thin Rust wrapper of a WSTR pointer that can be used to
+/// receive return parameters from windows API that use LocalAlloc
+/// under the covers.
+/// On drop, frees the memory using LocalFree.
+pub struct LocalWString {
+    pub ptr: *mut PWStr,
+}
+
+impl std::ops::Drop for LocalWString {
+    fn drop(&mut self) {
+        unsafe {
+            winapi::um::winbase::LocalFree(self.ptr as LPVoid);
+        }
+    }
+}
+
+impl LocalWString {
+    /// Creates a new empty LocalWString, with its pointer initialized to null.
+    pub fn new() -> LocalWString {
+        LocalWString {
+            ptr: std::ptr::null_mut(),
+        }
+    }
+
+    /// This function creates a String representation of the underlying WSTR.
+    pub fn to_string(&self) -> String {
+        match self.ptr {
+            ptr if ptr != std::ptr::null_mut() => unsafe {
+                widestring::WideCString::from_ptr_str(*self.ptr).to_string_lossy()
+            },
+            _ => String::from(""),
+        }
+    }
+}
