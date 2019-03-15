@@ -1,6 +1,6 @@
 [package]
 name = "winutils-rs"
-version = "0.1.5"
+version = "0.1.6"
 authors = ["rafawo <rafawo1@hotmail.com>"]
 license = "MIT"
 edition = "2018"
