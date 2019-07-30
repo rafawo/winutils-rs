@@ -14,6 +14,7 @@ This section briefly describes all published crates.io [versions](https://crates
 - [**0.2.0 Mar 15, 2019**](https://crates.io/crates/winutils-rs/0.2.0)
   - Cleaned up and fixed documentation
   - Renamed error codes enumeration from `ResultCode` to `WinResultCode`
+  - Fixes [issue 1](https://github.com/rafawo/winutils-rs/issues/1) by preferring a raw pointer cast instead of using a transmute with unnecessary bit copies
 - [**0.1.6 Mar 15, 2019**](https://crates.io/crates/winutils-rs/0.1.6)
   - Contains the oldest stable set of windows utilities
   - Error code definitions added from winerror.h in the Windows 10 SDK, ***no HRESULT definitions***
