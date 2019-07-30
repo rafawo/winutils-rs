@@ -9,7 +9,7 @@
 //! This project is a collection of Rust abstractions of random Windows API and definitions.
 //! This crate will slowly grow as time goes by.
 //! The main reason this crate exists is to have a common crate that
-//! [virtdisk-rs](https://github.com/rafawo/virtdisk-rs) and [hcs-rs](https://github.com/rafawo/hcs-rs)
+//! [virtdisk-rs](https://github.com/rafawo/virtdisk-rs), [hcs-rs](https://github.com/rafawo/hcs-rs) and [vmsavedstatetodump-rs](https://github.com/rafawo/vmsavedstatetodump-rs)
 //! crates can use to share windows utilities and definitions.
 
 pub mod diskformat;
@@ -17,8 +17,7 @@ pub mod errorcodes;
 pub mod utilities;
 
 pub mod windefs {
-    //! Defines type aliases for Windows Definitions to use Rust naming conventions
-    //! throughout the crate.
+    //! Defines type aliases for Windows Definitions that comply to Rust naming conventions
 
     pub type Bool = winapi::shared::minwindef::BOOL;
     pub type Boolean = winapi::shared::ntdef::BOOLEAN;
