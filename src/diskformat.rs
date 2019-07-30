@@ -6,7 +6,9 @@
 // except according to those terms.
 // THE SOURCE CODE IS AVAILABLE UNDER THE ABOVE CHOSEN LICENSE "AS IS", WITH NO WARRANTIES.
 
-use crate::errorcodes::{error_code_to_result_code, ResultCode};
+//! Module that contains defintions to undocumented APIs for disk formatting
+
+use crate::errorcodes::{error_code_to_winresult_code, WinResultCode};
 use crate::utilities::WinEvent;
 use crate::windefs::*;
 
@@ -138,7 +140,7 @@ pub struct FmIfsFinishedInformation {
 
 pub struct FormatContext {
     pub event: WinEvent,
-    pub result: ResultCode,
+    pub result: WinResultCode,
 }
 
 pub static mut FORMAT_CONTEXT_LOCK: Option<std::sync::Mutex<u32>> = None;
@@ -156,13 +158,13 @@ pub extern "C" fn format_ex2_callback(
             unsafe {
                 if let Some(ref mut context) = FORMAT_CONTEXT {
                     context.result = match info.success {
-                        result if result != 0 => ResultCode::ErrorSuccess,
-                        _ => error_code_to_result_code(info.final_result),
+                        result if result != 0 => WinResultCode::ErrorSuccess,
+                        _ => error_code_to_winresult_code(info.final_result),
                     };
 
                     if info.success == 0 && info.final_result == 0 {
                         // Format can fail without populating the FinalResult parameter, just assume general failure
-                        context.result = ResultCode::ErrorGenFailure;
+                        context.result = WinResultCode::ErrorGenFailure;
                     }
 
                     match context.event.set() {
