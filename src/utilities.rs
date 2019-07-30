@@ -6,7 +6,9 @@
 // except according to those terms.
 // THE SOURCE CODE IS AVAILABLE UNDER THE ABOVE CHOSEN LICENSE "AS IS", WITH NO WARRANTIES.
 
-use crate::errorcodes::{error_code_to_result_code, ResultCode};
+//! Collection of random Windows API utilities for ease of use in more Rust idiomatic ways
+
+use crate::errorcodes::{error_code_to_winresult_code, WinResult, WinResultCode};
 use crate::windefs::*;
 
 /// Closes a handle using windows CloseHandle API.
@@ -42,7 +44,7 @@ pub fn create_file(
     creation_disposition: DWord,
     flags_and_attributes: DWord,
     template_file: Option<Handle>,
-) -> Result<Handle, ResultCode> {
+) -> WinResult<Handle> {
     let security_descriptor_ptr = match security_descriptor {
         Some(security_descriptor) => security_descriptor,
         None => std::ptr::null_mut(),
@@ -66,7 +68,7 @@ pub fn create_file(
 
         match handle {
             handle if handle != std::ptr::null_mut() => Ok(handle),
-            _handle => Err(ResultCode::ErrorFileNotFound),
+            _handle => Err(WinResultCode::ErrorFileNotFound),
         }
     }
 }
@@ -128,13 +130,13 @@ impl CmNotification {
         filter: winapi::um::cfgmgr32::PCM_NOTIFY_FILTER,
         context: PVoid,
         callback: winapi::um::cfgmgr32::PCM_NOTIFY_CALLBACK,
-    ) -> Result<CmNotification, ResultCode> {
+    ) -> WinResult<CmNotification> {
         unsafe {
             let mut handle = std::mem::zeroed::<winapi::um::cfgmgr32::HCMNOTIFICATION>();
 
             match CM_Register_Notification(filter, context, callback, &mut handle) {
                 error if error != winapi::um::cfgmgr32::CR_SUCCESS => {
-                    Err(error_code_to_result_code(CM_MapCrToWin32Err(
+                    Err(error_code_to_winresult_code(CM_MapCrToWin32Err(
                         error,
                         winapi::shared::winerror::ERROR_GEN_FAILURE,
                     )))
@@ -151,7 +153,7 @@ impl CmNotification {
 pub enum WinEventResult {
     WaitObject0,
     WaitTimeout,
-    WaitFailed(ResultCode),
+    WaitFailed(WinResultCode),
 }
 
 /// Thin Rust abstraction of a Windows EVENT.
@@ -179,7 +181,7 @@ impl WinEvent {
         initial_state: bool,
         name: Option<&str>,
         event_attributes: Option<winapi::um::minwinbase::SECURITY_ATTRIBUTES>,
-    ) -> Result<WinEvent, ResultCode> {
+    ) -> WinResult<WinEvent> {
         let event_attributes_ptr = match event_attributes {
             Some(mut event_attributes) => &mut event_attributes,
             None => std::ptr::null_mut(),
@@ -214,7 +216,7 @@ impl WinEvent {
             ) {
                 handle if handle != std::ptr::null_mut() => Ok(WinEvent { handle }),
                 _ => {
-                    return Err(error_code_to_result_code(
+                    return Err(error_code_to_winresult_code(
                         winapi::um::errhandlingapi::GetLastError(),
                     ))
                 }
@@ -227,7 +229,7 @@ impl WinEvent {
         name: &str,
         desired_access: DWord,
         inherit_handle: bool,
-    ) -> Result<WinEvent, ResultCode> {
+    ) -> WinResult<WinEvent> {
         let inherit_handle: Bool = match inherit_handle {
             true => 1,
             false => 0,
@@ -241,7 +243,7 @@ impl WinEvent {
             ) {
                 handle if handle != std::ptr::null_mut() => Ok(WinEvent { handle }),
                 _ => {
-                    return Err(error_code_to_result_code(
+                    return Err(error_code_to_winresult_code(
                         winapi::um::errhandlingapi::GetLastError(),
                     ))
                 }
@@ -250,11 +252,11 @@ impl WinEvent {
     }
 
     /// Sets a Windows EVENT.
-    pub fn set(&self) -> Result<(), ResultCode> {
+    pub fn set(&self) -> WinResult<()> {
         unsafe {
             match winapi::um::synchapi::SetEvent(self.handle) {
                 0 => {
-                    return Err(error_code_to_result_code(
+                    return Err(error_code_to_winresult_code(
                         winapi::um::errhandlingapi::GetLastError(),
                     ))
                 }
@@ -264,11 +266,11 @@ impl WinEvent {
     }
 
     /// Resets a Windows EVENT.
-    pub fn reset(&self) -> Result<(), ResultCode> {
+    pub fn reset(&self) -> WinResult<()> {
         unsafe {
             match winapi::um::synchapi::ResetEvent(self.handle) {
                 0 => {
-                    return Err(error_code_to_result_code(
+                    return Err(error_code_to_winresult_code(
                         winapi::um::errhandlingapi::GetLastError(),
                     ))
                 }
@@ -278,11 +280,11 @@ impl WinEvent {
     }
 
     /// Pulses a Windows EVENT.
-    pub fn pulse(&self) -> Result<(), ResultCode> {
+    pub fn pulse(&self) -> WinResult<()> {
         unsafe {
             match winapi::um::winbase::PulseEvent(self.handle) {
                 0 => {
-                    return Err(error_code_to_result_code(
+                    return Err(error_code_to_winresult_code(
                         winapi::um::errhandlingapi::GetLastError(),
                     ))
                 }
@@ -298,9 +300,9 @@ impl WinEvent {
                 winapi::um::winbase::WAIT_OBJECT_0 => WinEventResult::WaitObject0,
                 winapi::shared::winerror::WAIT_TIMEOUT => WinEventResult::WaitTimeout,
                 winapi::um::winbase::WAIT_FAILED => WinEventResult::WaitFailed(
-                    error_code_to_result_code(winapi::um::errhandlingapi::GetLastError()),
+                    error_code_to_winresult_code(winapi::um::errhandlingapi::GetLastError()),
                 ),
-                _ => WinEventResult::WaitFailed(error_code_to_result_code(
+                _ => WinEventResult::WaitFailed(error_code_to_winresult_code(
                     winapi::um::errhandlingapi::GetLastError(),
                 )),
             }
@@ -332,7 +334,7 @@ impl std::ops::Drop for WinLibrary {
 
 impl WinLibrary {
     /// Loads a library by name with the supplied flags.
-    pub fn load(lib_file_name: &str, flags: DWord) -> Result<WinLibrary, ResultCode> {
+    pub fn load(lib_file_name: &str, flags: DWord) -> WinResult<WinLibrary> {
         unsafe {
             match winapi::um::libloaderapi::LoadLibraryExW(
                 widestring::WideCString::from_str(lib_file_name)
@@ -342,7 +344,7 @@ impl WinLibrary {
                 flags,
             ) {
                 handle if handle != std::ptr::null_mut() => Ok(WinLibrary { handle }),
-                _ => Err(error_code_to_result_code(
+                _ => Err(error_code_to_winresult_code(
                     winapi::um::errhandlingapi::GetLastError(),
                 )),
             }
@@ -353,14 +355,14 @@ impl WinLibrary {
     pub fn proc_address(
         &self,
         proc_name: &str,
-    ) -> Result<winapi::shared::minwindef::FARPROC, ResultCode> {
+    ) -> WinResult<winapi::shared::minwindef::FARPROC> {
         unsafe {
             match winapi::um::libloaderapi::GetProcAddress(
                 self.handle,
                 std::ffi::CString::new(proc_name).unwrap().as_ptr(),
             ) {
                 farproc if farproc != std::ptr::null_mut() => Ok(farproc),
-                _ => Err(error_code_to_result_code(
+                _ => Err(error_code_to_winresult_code(
                     winapi::um::errhandlingapi::GetLastError(),
                 )),
             }
@@ -379,18 +381,18 @@ extern "C" {
 }
 
 /// Creates a new GUID.
-pub fn create_guid() -> Result<Guid, ResultCode> {
+pub fn create_guid() -> WinResult<Guid> {
     let mut guid: Guid = GUID_NULL;
     unsafe {
         match UuidCreate(&mut guid) {
             0 => Ok(guid),
-            error_code => Err(error_code_to_result_code(error_code as u32)),
+            error_code => Err(error_code_to_winresult_code(error_code as u32)),
         }
     }
 }
 
 /// Parses the given string to a GUID.
-pub fn parse_guid(guid_string: &str) -> Result<Guid, ResultCode> {
+pub fn parse_guid(guid_string: &str) -> WinResult<Guid> {
     let mut guid: Guid = GUID_NULL;
     unsafe {
         match UuidFromStringW(
@@ -401,7 +403,7 @@ pub fn parse_guid(guid_string: &str) -> Result<Guid, ResultCode> {
             &mut guid,
         ) {
             0 => Ok(guid),
-            error_code => Err(error_code_to_result_code(error_code as u32)),
+            error_code => Err(error_code_to_winresult_code(error_code as u32)),
         }
     }
 }
@@ -411,7 +413,7 @@ pub fn enable_privilege(
     token_handle: Handle,
     id: &winapi::um::winnt::LUID,
     enable: bool,
-) -> Result<bool, ResultCode> {
+) -> WinResult<bool> {
     use winapi::um::{securitybaseapi, winnt};
 
     unsafe {
@@ -435,7 +437,7 @@ pub fn enable_privilege(
             &mut prev_length,
         ) == 0
         {
-            return Err(error_code_to_result_code(
+            return Err(error_code_to_winresult_code(
                 winapi::um::errhandlingapi::GetLastError(),
             ));
         }
@@ -474,7 +476,7 @@ impl std::ops::Drop for TemporaryPrivilege {
 
 impl TemporaryPrivilege {
     /// Creates a new "temporary" privilege.
-    pub fn new(privilege_name: &str) -> Result<TemporaryPrivilege, ResultCode> {
+    pub fn new(privilege_name: &str) -> WinResult<TemporaryPrivilege> {
         use winapi::um::{errhandlingapi, processthreadsapi, securitybaseapi, winbase, winnt};
 
         unsafe {
@@ -488,7 +490,7 @@ impl TemporaryPrivilege {
                 &mut privilege,
             ) == 0
             {
-                return Err(error_code_to_result_code(errhandlingapi::GetLastError()));
+                return Err(error_code_to_winresult_code(errhandlingapi::GetLastError()));
             }
 
             let mut token_handle: Handle = std::ptr::null_mut();
@@ -504,11 +506,11 @@ impl TemporaryPrivilege {
                 let error = errhandlingapi::GetLastError();
 
                 if error != winapi::shared::winerror::ERROR_NO_TOKEN {
-                    return Err(error_code_to_result_code(error));
+                    return Err(error_code_to_winresult_code(error));
                 }
 
                 if securitybaseapi::ImpersonateSelf(winnt::SecurityImpersonation) == 0 {
-                    return Err(error_code_to_result_code(errhandlingapi::GetLastError()));
+                    return Err(error_code_to_winresult_code(errhandlingapi::GetLastError()));
                 }
 
                 if processthreadsapi::OpenThreadToken(
@@ -524,7 +526,7 @@ impl TemporaryPrivilege {
                         panic!("Failed to revert impersonation to self!");
                     }
 
-                    return Err(error_code_to_result_code(error));
+                    return Err(error_code_to_winresult_code(error));
                 }
 
                 impersonating_self = true;
