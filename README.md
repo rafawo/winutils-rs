@@ -11,8 +11,11 @@ The main reason this crate exists is to have a common crate that [virtdisk-rs](h
 
 This section briefly describes all published crates.io [versions](https://crates.io/crates/winutils-rs/versions) of this project, ordered from latest to oldest.
 
+- [**0.2.0 Mar 15, 2019**](https://crates.io/crates/winutils-rs/0.2.0)
+  - Cleaned up and fixed documentation
+  - Renamed error codes `ResultCode` to `WinResultCode`
 - [**0.1.6 Mar 15, 2019**](https://crates.io/crates/winutils-rs/0.1.6)
-  - Contains the latest stable set of windows utilties
+  - Contains the oldest stable set of windows utilties
   - Error code definitions added from winerror.h in the Windows 10 SDK, ***no HRESULT definitions***
 - [**0.1.5 Jan 8, 2019**](https://crates.io/crates/winutils-rs/0.1.5)
   - **YANKED, DO NOT USE**
