@@ -225,11 +225,7 @@ impl WinEvent {
     }
 
     /// Opens a named windows EVENT.
-    pub fn open(
-        name: &str,
-        desired_access: DWord,
-        inherit_handle: bool,
-    ) -> WinResult<WinEvent> {
+    pub fn open(name: &str, desired_access: DWord, inherit_handle: bool) -> WinResult<WinEvent> {
         let inherit_handle: Bool = match inherit_handle {
             true => 1,
             false => 0,
@@ -352,10 +348,7 @@ impl WinLibrary {
     }
 
     /// Returns the process address by name on the loaded library.
-    pub fn proc_address(
-        &self,
-        proc_name: &str,
-    ) -> WinResult<winapi::shared::minwindef::FARPROC> {
+    pub fn proc_address(&self, proc_name: &str) -> WinResult<winapi::shared::minwindef::FARPROC> {
         unsafe {
             match winapi::um::libloaderapi::GetProcAddress(
                 self.handle,

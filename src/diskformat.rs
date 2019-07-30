@@ -153,7 +153,8 @@ pub extern "C" fn format_ex2_callback(
 ) -> Boolean {
     match packet_type {
         FmIfsPacketType::FmIfsFinished => {
-            let info: FmIfsFinishedInformation = unsafe { *(packet_data as *const FmIfsFinishedInformation) };
+            let info: FmIfsFinishedInformation =
+                unsafe { *(packet_data as *const FmIfsFinishedInformation) };
 
             unsafe {
                 if let Some(ref mut context) = FORMAT_CONTEXT {
