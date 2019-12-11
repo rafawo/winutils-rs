@@ -552,7 +552,7 @@ extern "C" {
 /// under the covers.
 /// On drop, frees the memory using CoTaskMemFree.
 pub struct CoTaskMemWString {
-    pub ptr: *mut PWStr,
+    ptr: PWStr,
 }
 
 impl std::ops::Drop for CoTaskMemWString {
@@ -571,11 +571,17 @@ impl CoTaskMemWString {
         }
     }
 
+    /// Returns a mutable pointer to the wrapped wide string pointer, useful
+    /// for passing to win32 APIs that return CoTaskMemAlloc string.
+    pub fn ptr_mut(&mut self) -> *mut PWStr {
+        &mut self.ptr
+    }
+
     /// This function creates a String representation of the underlying WSTR.
-    pub fn to_string(&self) -> String {
+    pub fn to_string(&mut self) -> String {
         match self.ptr {
             ptr if ptr != std::ptr::null_mut() => unsafe {
-                widestring::WideCString::from_ptr_str(*self.ptr).to_string_lossy()
+                widestring::WideCString::from_ptr_str(self.ptr).to_string_lossy()
             },
             _ => String::from(""),
         }
@@ -587,7 +593,7 @@ impl CoTaskMemWString {
 /// under the covers.
 /// On drop, frees the memory using LocalFree.
 pub struct LocalWString {
-    pub ptr: *mut PWStr,
+    ptr: PWStr,
 }
 
 impl std::ops::Drop for LocalWString {
@@ -606,11 +612,17 @@ impl LocalWString {
         }
     }
 
+    /// Returns a mutable pointer to the wrapped wide string pointer, useful
+    /// for passing to win32 APIs that return LocalAlloc string.
+    pub fn ptr_mut(&mut self) -> *mut PWStr {
+        &mut self.ptr
+    }
+
     /// This function creates a String representation of the underlying WSTR.
     pub fn to_string(&self) -> String {
         match self.ptr {
             ptr if ptr != std::ptr::null_mut() => unsafe {
-                widestring::WideCString::from_ptr_str(*self.ptr).to_string_lossy()
+                widestring::WideCString::from_ptr_str(self.ptr).to_string_lossy()
             },
             _ => String::from(""),
         }
