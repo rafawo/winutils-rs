@@ -1,4 +1,4 @@
-// Copyright © rafawo (rafawo1@hotmail.com). All rights reserved.
+// Copyright (c) 2019 Rafael Alcaraz Mercado. All rights reserved.
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your option.
@@ -6,7 +6,7 @@
 // except according to those terms.
 // THE SOURCE CODE IS AVAILABLE UNDER THE ABOVE CHOSEN LICENSE "AS IS", WITH NO WARRANTIES.
 
-//! Module that contains defintions to undocumented APIs for disk formatting
+//! Module that contains definitions to undocumented APIs for disk formatting
 
 use crate::errorcodes::{error_code_to_winresult_code, WinResultCode};
 use crate::utilities::WinEvent;
