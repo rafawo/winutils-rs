@@ -628,3 +628,27 @@ impl LocalWString {
         }
     }
 }
+
+/// Returns a descriptive error message for a given HRESULT, for frendlier error reporting.
+pub fn hresult_message(hresult: winapi::shared::winerror::HRESULT) -> String {
+    use winapi::um::winbase::{
+        FormatMessageW, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM,
+        FORMAT_MESSAGE_IGNORE_INSERTS,
+    };
+
+    let mut wstr = LocalWString::new();
+    unsafe {
+        FormatMessageW(
+            FORMAT_MESSAGE_FROM_SYSTEM
+                | FORMAT_MESSAGE_ALLOCATE_BUFFER
+                | FORMAT_MESSAGE_IGNORE_INSERTS,
+            std::ptr::null(),
+            hresult as u32,
+            0,
+            wstr.ptr_mut() as winapi::shared::ntdef::LPWSTR,
+            0,
+            std::ptr::null_mut(),
+        );
+    }
+    wstr.to_string()
+}
