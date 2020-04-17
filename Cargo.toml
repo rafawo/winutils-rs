@@ -2,7 +2,7 @@
 name = "winutils-rs"
 version = "0.2.1"
 authors = ["rafawo <rafawo1@hotmail.com>"]
-license = "MIT/Apache-2.0"
+license = "MIT"
 edition = "2018"
 description = "Rust wrappers of various Windows API and definitions."
 repository = "https://github.com/rafawo/winutils-rs"
