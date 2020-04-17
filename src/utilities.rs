@@ -548,8 +548,7 @@ extern "C" {
 }
 
 /// Thin Rust wrapper of a WSTR pointer that can be used to
-/// receive return parameters from windows API that use CoTaskMemAlloc
-/// under the covers.
+/// receive return parameters from windows API that use CoTaskMemAlloc under the covers.
 /// On drop, frees the memory using CoTaskMemFree.
 pub struct CoTaskMemWString {
     ptr: PWStr,
@@ -589,8 +588,7 @@ impl CoTaskMemWString {
 }
 
 /// Thin Rust wrapper of a WSTR pointer that can be used to
-/// receive return parameters from windows API that use LocalAlloc
-/// under the covers.
+/// receive return parameters from windows API that use LocalAlloc under the covers.
 /// On drop, frees the memory using LocalFree.
 pub struct LocalWString {
     ptr: PWStr,
@@ -651,4 +649,179 @@ pub fn hresult_message(hresult: winapi::shared::winerror::HRESULT) -> String {
         );
     }
     wstr.to_string()
+}
+
+/// Returns an Err if the supplied parameter is FALSE.
+pub fn err_if_win32_bool_false(result: Bool) -> WinResult<()> {
+    if result == winapi::shared::minwindef::FALSE {
+        let last_error = unsafe { winapi::um::errhandlingapi::GetLastError() };
+        if last_error != winapi::shared::winerror::ERROR_SUCCESS {
+            return Err(error_code_to_winresult_code(last_error));
+        }
+    }
+
+    Ok(())
+}
+
+/// Thin Rust wrapper of a `SECURITY_DESCRIPTOR` pointer that can be used to
+/// receive return parameters from windows API that use LocalAlloc under the covers.
+/// On drop, frees the memory using LocalFree.
+pub struct LocalSecurityDescriptor {
+    ptr: winapi::um::winnt::PSECURITY_DESCRIPTOR,
+}
+
+impl std::ops::Drop for LocalSecurityDescriptor {
+    fn drop(&mut self) {
+        self.force_free();
+    }
+}
+
+impl LocalSecurityDescriptor {
+    /// Creates a new empty `LocalSecurityDescriptor`, with its pointer initialized to null.
+    pub fn new() -> Self {
+        LocalSecurityDescriptor {
+            ptr: std::ptr::null_mut(),
+        }
+    }
+
+    /// Creates a new `LocalSecurityDescriptor` that wraps the given raw pointer.
+    pub fn from_raw(ptr: winapi::um::winnt::PSECURITY_DESCRIPTOR) -> Self {
+        LocalSecurityDescriptor { ptr }
+    }
+
+    /// Returns a mutable pointer to the wrapped security descriptor pointer, useful
+    /// for passing to win32 APIs that return LocalAlloc security descriptor.
+    pub fn ptr_mut(&mut self) -> *mut winapi::um::winnt::PSECURITY_DESCRIPTOR {
+        &mut self.ptr
+    }
+
+    /// Returns the pointer to the security descriptor.
+    pub fn get(&self) -> winapi::um::winnt::PSECURITY_DESCRIPTOR {
+        self.ptr
+    }
+
+    /// Returns whether the underlying pointer is valid or not.
+    pub fn valid_ptr(&self) -> bool {
+        self.ptr != std::ptr::null_mut()
+    }
+
+    /// Releases the wrapped pointer, invalidating it internally.
+    pub fn release(&mut self) -> winapi::um::winnt::PSECURITY_DESCRIPTOR {
+        let ptr = self.ptr;
+        self.ptr = std::ptr::null_mut();
+        ptr
+    }
+
+    /// Forces a LocalFree of the underlying pointer.
+    pub fn force_free(&mut self) {
+        if self.valid_ptr() {
+            unsafe { winapi::um::winbase::LocalFree(self.ptr as LPVoid) };
+            self.ptr = std::ptr::null_mut();
+        }
+    }
+
+    /// Returns whether the security descriptor is absolute or not.
+    pub fn is_absolute(&self) -> WinResult<bool> {
+        let mut control: winapi::um::winnt::SECURITY_DESCRIPTOR_CONTROL = 0;
+        let mut revision: DWord = 0;
+        match unsafe {
+            winapi::um::securitybaseapi::GetSecurityDescriptorControl(
+                self.get(),
+                &mut control,
+                &mut revision,
+            )
+        } {
+            winapi::shared::winerror::S_OK => {
+                // Flag not set
+                Ok((control & winapi::um::winnt::SE_SELF_RELATIVE) == 0)
+            }
+            hresult => Err(error_code_to_winresult_code(hresult as DWord)),
+        }
+    }
+
+    /// If the underlying security descriptor is not absolute yet, it is made to be.
+    pub fn make_absolute(&mut self) -> WinResult<()> {
+        if self.is_absolute()? {
+            return Ok(());
+        }
+
+        unsafe {
+            let mut header_size: DWord = 0;
+            let mut dacl_size: DWord = 0;
+            let mut sacl_size: DWord = 0;
+            let mut owner_size: DWord = 0;
+            let mut group_size: DWord = 0;
+
+            let result = winapi::um::securitybaseapi::MakeAbsoluteSD(
+                self.get(),
+                std::ptr::null_mut(),
+                &mut header_size,
+                std::ptr::null_mut(),
+                &mut dacl_size,
+                std::ptr::null_mut(),
+                &mut sacl_size,
+                std::ptr::null_mut(),
+                &mut owner_size,
+                std::ptr::null_mut(),
+                &mut group_size,
+            );
+
+            let last_error = winapi::um::errhandlingapi::GetLastError();
+            if (result == winapi::shared::minwindef::FALSE)
+                && (last_error != winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER)
+            {
+                return Err(error_code_to_winresult_code(
+                    winapi::um::errhandlingapi::GetLastError(),
+                ));
+            }
+
+            let total_size = header_size + dacl_size + sacl_size + owner_size + group_size;
+            let mut absolute = LocalSecurityDescriptor::from_raw(winapi::um::winbase::LocalAlloc(
+                winapi::um::minwinbase::LMEM_FIXED,
+                total_size as usize,
+            ));
+
+            if !absolute.valid_ptr() {
+                let last_error = winapi::um::errhandlingapi::GetLastError();
+                if last_error != winapi::shared::winerror::ERROR_SUCCESS {
+                    return Err(error_code_to_winresult_code(
+                        winapi::um::errhandlingapi::GetLastError(),
+                    ));
+                }
+            }
+
+            let position: *mut Byte = absolute.get() as *mut _ as *mut Byte;
+
+            let position = position.offset(header_size as isize);
+            let dacl = position as *mut _ as winapi::um::winnt::PACL;
+
+            let position = position.offset(dacl_size as isize);
+            let sacl = position as *mut _ as winapi::um::winnt::PACL;
+
+            let position = position.offset(sacl_size as isize);
+            let owner = position as *mut _ as winapi::um::winnt::PSID;
+
+            let position = position.offset(owner_size as isize);
+            let group = position as *mut _ as winapi::um::winnt::PSID;
+
+            err_if_win32_bool_false(winapi::um::securitybaseapi::MakeAbsoluteSD(
+                self.get(),
+                absolute.get(),
+                &mut header_size,
+                dacl,
+                &mut dacl_size,
+                sacl,
+                &mut sacl_size,
+                owner,
+                &mut owner_size,
+                group,
+                &mut group_size,
+            ))?;
+
+            self.force_free();
+            self.ptr = absolute.release();
+        }
+
+        Ok(())
+    }
 }
