@@ -587,6 +587,49 @@ impl CoTaskMemWString {
     }
 }
 
+pub struct LocalMemory {
+    ptr: winapi::um::winnt::PVOID,
+}
+
+impl std::ops::Drop for LocalMemory {
+    fn drop(&mut self) {
+        if self.ptr != std::ptr::null_mut() {
+            unsafe {
+                winapi::um::winbase::LocalFree(self.ptr);
+            }
+        }
+    }
+}
+
+impl LocalMemory {
+    pub fn new(
+        flags: winapi::shared::minwindef::UINT,
+        bytes: winapi::shared::basetsd::SIZE_T,
+    ) -> WinResult<Self> {
+        let ptr = unsafe { winapi::um::winbase::LocalAlloc(flags, bytes) };
+        lasterror_if(ptr == std::ptr::null_mut())?;
+        Ok(LocalMemory { ptr })
+    }
+
+    pub fn from_raw(ptr: winapi::um::winnt::PVOID) -> Self {
+        LocalMemory { ptr }
+    }
+
+    pub unsafe fn release(&mut self) -> winapi::um::winnt::PVOID {
+        let ptr = self.ptr;
+        self.ptr = std::ptr::null_mut();
+        ptr
+    }
+
+    pub unsafe fn ptr<T>(&self) -> *const T {
+        self.ptr as *const T
+    }
+
+    pub unsafe fn ptr_mut<T>(&mut self) -> *mut T {
+        self.ptr as *mut T
+    }
+}
+
 /// Thin Rust wrapper of a WSTR pointer that can be used to
 /// receive return parameters from windows API that use LocalAlloc under the covers.
 /// On drop, frees the memory using LocalFree.
@@ -651,9 +694,8 @@ pub fn hresult_message(hresult: winapi::shared::winerror::HRESULT) -> String {
     wstr.to_string()
 }
 
-/// Returns an Err if the supplied parameter is FALSE.
-pub fn err_if_win32_bool_false(result: Bool) -> WinResult<()> {
-    if result == winapi::shared::minwindef::FALSE {
+pub fn lasterror_if(condition: bool) -> WinResult<()> {
+    if condition {
         let last_error = unsafe { winapi::um::errhandlingapi::GetLastError() };
         if last_error != winapi::shared::winerror::ERROR_SUCCESS {
             return Err(error_code_to_winresult_code(last_error));
@@ -661,6 +703,11 @@ pub fn err_if_win32_bool_false(result: Bool) -> WinResult<()> {
     }
 
     Ok(())
+}
+
+/// Returns an Err if the supplied parameter is FALSE.
+pub fn lasterror_if_win32_bool_false(result: Bool) -> WinResult<()> {
+    lasterror_if(result == winapi::shared::minwindef::FALSE)
 }
 
 /// Thin Rust wrapper of a `SECURITY_DESCRIPTOR` pointer that can be used to
@@ -706,7 +753,7 @@ impl LocalSecurityDescriptor {
     }
 
     /// Releases the wrapped pointer, invalidating it internally.
-    pub fn release(&mut self) -> winapi::um::winnt::PSECURITY_DESCRIPTOR {
+    pub unsafe fn release(&mut self) -> winapi::um::winnt::PSECURITY_DESCRIPTOR {
         let ptr = self.ptr;
         self.ptr = std::ptr::null_mut();
         ptr
@@ -780,15 +827,7 @@ impl LocalSecurityDescriptor {
                 winapi::um::minwinbase::LMEM_FIXED,
                 total_size as usize,
             ));
-
-            if !absolute.valid_ptr() {
-                let last_error = winapi::um::errhandlingapi::GetLastError();
-                if last_error != winapi::shared::winerror::ERROR_SUCCESS {
-                    return Err(error_code_to_winresult_code(
-                        winapi::um::errhandlingapi::GetLastError(),
-                    ));
-                }
-            }
+            lasterror_if(!absolute.valid_ptr())?;
 
             let position: *mut Byte = absolute.get() as *mut _ as *mut Byte;
 
@@ -804,7 +843,7 @@ impl LocalSecurityDescriptor {
             let position = position.offset(owner_size as isize);
             let group = position as *mut _ as winapi::um::winnt::PSID;
 
-            err_if_win32_bool_false(winapi::um::securitybaseapi::MakeAbsoluteSD(
+            lasterror_if_win32_bool_false(winapi::um::securitybaseapi::MakeAbsoluteSD(
                 self.get(),
                 absolute.get(),
                 &mut header_size,
@@ -821,6 +860,138 @@ impl LocalSecurityDescriptor {
             self.force_free();
             self.ptr = absolute.release();
         }
+
+        Ok(())
+    }
+}
+
+pub struct TokenInformation {
+    buffer: Vec<u8>,
+}
+
+impl TokenInformation {
+    pub fn new(
+        info_class: winapi::um::winnt::TOKEN_INFORMATION_CLASS,
+        token: winapi::um::winnt::HANDLE,
+    ) -> WinResult<Self> {
+        let mut buffer: Vec<u8> = Vec::new();
+        let mut token = token;
+        if token == std::ptr::null_mut() {
+            token = (-6) as isize as winapi::um::winnt::HANDLE;
+        }
+        let token = token;
+
+        let mut info_size: DWord = 0;
+        let result = unsafe {
+            winapi::um::securitybaseapi::GetTokenInformation(
+                token,
+                info_class,
+                std::ptr::null_mut(),
+                0,
+                &mut info_size,
+            )
+        };
+
+        let last_error = unsafe { winapi::um::errhandlingapi::GetLastError() };
+        lasterror_if(
+            result == winapi::shared::minwindef::FALSE
+                && last_error != winapi::shared::winerror::ERROR_INSUFFICIENT_BUFFER,
+        )?;
+
+        buffer.resize(info_size as usize, 0);
+
+        lasterror_if_win32_bool_false(unsafe {
+            winapi::um::securitybaseapi::GetTokenInformation(
+                token,
+                info_class,
+                buffer.as_mut_ptr() as *mut _,
+                info_size,
+                &mut info_size,
+            )
+        })?;
+
+        Ok(TokenInformation { buffer })
+    }
+
+    pub unsafe fn info<T>(&self) -> &T {
+        &*(self.buffer.as_ptr() as *const T)
+    }
+
+    pub unsafe fn info_mut<T>(&mut self) -> &mut T {
+        &mut *(self.buffer.as_mut_ptr() as *mut T)
+    }
+}
+
+/// Wrapper of the COM library initialization.
+/// When dropped, `CoUninitialize` is called if this instance hasn't been released.
+pub struct ComLibraryRuntime {
+    should_uninit: bool,
+}
+
+impl std::ops::Drop for ComLibraryRuntime {
+    fn drop(&mut self) {
+        if self.should_uninit {
+            unsafe {
+                winapi::um::combaseapi::CoUninitialize();
+            }
+        }
+    }
+}
+
+impl ComLibraryRuntime {
+    /// Creates a new `ComLibraryRuntime` by calling `CoInitializeEx` with
+    /// the supplied init flags.
+    pub fn new(co_init: DWord) -> WinResult<Self> {
+        match unsafe { winapi::um::combaseapi::CoInitializeEx(std::ptr::null_mut(), co_init) } {
+            winapi::shared::winerror::S_OK => Ok(ComLibraryRuntime {
+                should_uninit: true,
+            }),
+            hresult => Err(error_code_to_winresult_code(hresult as u32)),
+        }
+    }
+
+    /// Releases this wrapper so that when dropped, it doesn't uninitialize
+    /// the COM library runtime.
+    pub unsafe fn release(&mut self) {
+        self.should_uninit = false;
+    }
+
+    /// Sets up COM security with the specified security string descriptor.
+    pub fn setup_security(sec_str_desc: &str) -> WinResult<()> {
+        let mut desc = LocalSecurityDescriptor::new();
+        lasterror_if_win32_bool_false(unsafe {
+            winapi::shared::sddl::ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                widestring::WideCString::from_str(sec_str_desc)
+                    .unwrap()
+                    .as_ptr(),
+                winapi::shared::sddl::SDDL_REVISION_1.into(),
+                desc.ptr_mut(),
+                std::ptr::null_mut(),
+            )
+        })?;
+
+        desc.make_absolute()?;
+        let token_user = TokenInformation::new(winapi::um::winnt::TokenUser, std::ptr::null_mut())?;
+        lasterror_if_win32_bool_false(unsafe {
+            winapi::um::securitybaseapi::SetSecurityDescriptorOwner(
+                desc.get(),
+                token_user.info::<winapi::um::winnt::TOKEN_USER>().User.Sid,
+                winapi::shared::minwindef::FALSE,
+            )
+        })?;
+
+        desc.make_absolute()?;
+        let token_primary_group =
+            TokenInformation::new(winapi::um::winnt::TokenPrimaryGroup, std::ptr::null_mut())?;
+        lasterror_if_win32_bool_false(unsafe {
+            winapi::um::securitybaseapi::SetSecurityDescriptorOwner(
+                desc.get(),
+                token_primary_group
+                    .info::<winapi::um::winnt::TOKEN_PRIMARY_GROUP>()
+                    .PrimaryGroup,
+                winapi::shared::minwindef::FALSE,
+            )
+        })?;
 
         Ok(())
     }
