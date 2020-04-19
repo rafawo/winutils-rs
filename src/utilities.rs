@@ -646,6 +646,7 @@ impl LocalMemory {
             unsafe {
                 winapi::um::winbase::LocalFree(self.ptr);
             }
+            self.ptr = std::ptr::null_mut();
         }
     }
 
@@ -1148,7 +1149,7 @@ impl ComLibraryRuntime {
 
         sec_desc.make_absolute()?;
 
-        match unsafe {
+        let result = match unsafe {
             winapi::um::combaseapi::CoInitializeSecurity(
                 sec_desc.get(),
                 -1,
@@ -1165,6 +1166,13 @@ impl ComLibraryRuntime {
                 Err(error_code_to_winresult_code(hresult as u32))
             }
             _ => Ok(()),
-        }
+        };
+
+        // Ensure variables stay in scope when calling CoInitializeSecurity
+        drop(dacl);
+        drop(token_primary_group);
+        drop(token_user);
+
+        result
     }
 }
