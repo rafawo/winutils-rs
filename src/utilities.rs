@@ -834,19 +834,14 @@ impl LocalSecurityDescriptor {
     pub fn is_absolute(&self) -> WinResult<bool> {
         let mut control: winapi::um::winnt::SECURITY_DESCRIPTOR_CONTROL = 0;
         let mut revision: DWord = 0;
-        match unsafe {
+        lasterror_if_win32_bool_false(unsafe {
             winapi::um::securitybaseapi::GetSecurityDescriptorControl(
                 self.get(),
                 &mut control,
                 &mut revision,
             )
-        } {
-            winapi::shared::winerror::S_OK => {
-                // Flag not set
-                Ok((control & winapi::um::winnt::SE_SELF_RELATIVE) == 0)
-            }
-            hresult => Err(error_code_to_winresult_code(hresult as DWord)),
-        }
+        })?;
+        Ok((control & winapi::um::winnt::SE_SELF_RELATIVE) == 0)
     }
 
     /// If the underlying security descriptor is not absolute yet, it is made to be.
