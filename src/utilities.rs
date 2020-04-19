@@ -587,6 +587,7 @@ impl CoTaskMemWString {
     }
 }
 
+/// Wrapper struct that holds a raw pointer to a `LocalAlloc`'d memory.
 pub struct LocalMemory {
     ptr: winapi::um::winnt::PVOID,
 }
@@ -598,6 +599,8 @@ impl std::ops::Drop for LocalMemory {
 }
 
 impl LocalMemory {
+    /// Creates a new `LocalMemory` instance by calling `LocalAlloc` and wrapping
+    /// the resulting memory allocation on a raw pointer.
     pub fn new(
         flags: winapi::shared::minwindef::UINT,
         bytes: winapi::shared::basetsd::SIZE_T,
@@ -607,29 +610,37 @@ impl LocalMemory {
         Ok(LocalMemory { ptr })
     }
 
+    /// Returns a new `LocalMemory` instance that has not allocated memory
+    /// and wraps a null raw pointer.
     pub fn new_empty() -> Self {
         Self::from_raw(std::ptr::null_mut())
     }
 
+    /// Creates a new `LocalMemory` instance by wrapping the supplied raw pointer.
     pub fn from_raw(ptr: winapi::um::winnt::PVOID) -> Self {
         LocalMemory { ptr }
     }
 
+    /// Returns whether if the underlying wrapped raw pointer is valid (not null).
     pub fn valid_ptr(&self) -> bool {
         self.ptr != std::ptr::null_mut()
     }
 
+    /// Releases the underlying raw pointer, so that when this `LocalMemory` instance
+    /// drops it won't call `LocalFree`.
     pub unsafe fn release(&mut self) -> winapi::um::winnt::PVOID {
         let ptr = self.ptr;
         self.ptr = std::ptr::null_mut();
         ptr
     }
 
+    /// Frees the currently wrapped raw pointer and then wraps the supplied raw pointer.
     pub fn reset(&mut self, ptr: winapi::um::winnt::PVOID) {
         self.force_free();
         self.ptr = ptr;
     }
 
+    /// Frees the wrapped raw pointer using `LocalFree`, if valid.
     pub fn force_free(&mut self) {
         if self.valid_ptr() {
             unsafe {
@@ -638,10 +649,12 @@ impl LocalMemory {
         }
     }
 
+    /// Returns the underlying allocated memory's raw pointer.
     pub unsafe fn ptr<T>(&self) -> *const T {
         self.ptr as *const T
     }
 
+    /// Returns the underlying allocated memory's raw pointer.
     pub unsafe fn ptr_mut<T>(&mut self) -> *mut T {
         self.ptr as *mut T
     }
@@ -711,6 +724,7 @@ pub fn hresult_message(hresult: winapi::shared::winerror::HRESULT) -> String {
     wstr.to_string()
 }
 
+/// Returns a win error if the supplied condition resolves to `false`.
 pub fn lasterror_if(condition: bool) -> WinResult<()> {
     if condition {
         let last_error = unsafe { winapi::um::errhandlingapi::GetLastError() };
@@ -727,15 +741,19 @@ pub fn lasterror_if_win32_bool_false(result: Bool) -> WinResult<()> {
     lasterror_if(result == winapi::shared::minwindef::FALSE)
 }
 
+/// Simple wrapper of a DACL with an underlying LocalMemory.
+/// Instances of this struct can only be safely obtained through `LocalSecurityDescriptor::get_dacl`.
 pub struct LocalDAcl {
     local_mem: LocalMemory,
 }
 
 impl LocalDAcl {
+    /// Get the underlying local memory as an ACL immutable reference.
     pub fn get(&self) -> &winapi::um::winnt::ACL {
         unsafe { &*(self.local_mem.ptr as *const winapi::um::winnt::ACL) }
     }
 
+    /// Get the underlying local memory as an ACL mutable reference.
     pub fn get_mut(&mut self) -> &mut winapi::um::winnt::ACL {
         unsafe { &mut *(self.local_mem.ptr_mut() as *mut winapi::um::winnt::ACL) }
     }
@@ -909,6 +927,7 @@ impl LocalSecurityDescriptor {
         Ok(())
     }
 
+    /// Returns a newly allocated DACL that corresponds to the security descriptor.
     pub fn get_dacl(&self) -> WinResult<Option<LocalDAcl>> {
         let mut present: Bool = 0;
         let mut defaulted: Bool = 0;
@@ -942,6 +961,7 @@ impl LocalSecurityDescriptor {
         }
     }
 
+    /// Returns a DACL for the security descriptor with the additional user SID.
     pub fn add_user_dacl(&self, psid: winapi::um::winnt::PSID) -> WinResult<Option<LocalDAcl>> {
         match self.get_dacl()? {
             None => Ok(None),
@@ -977,11 +997,16 @@ impl LocalSecurityDescriptor {
     }
 }
 
+/// Convenient wrapper of a Token information, that stores an internal buffer to
+/// hold enough memory to return the requested information class type.
 pub struct TokenInformation {
     buffer: Vec<u8>,
 }
 
 impl TokenInformation {
+    /// Creates a new `TokenInformation` instance, where by the given info class and token
+    /// handle it allocates enough memory on an internal buffer, with enough size
+    /// to hold the token's requested information.
     pub fn new(
         info_class: winapi::um::winnt::TOKEN_INFORMATION_CLASS,
         token: winapi::um::winnt::HANDLE,
@@ -1025,10 +1050,16 @@ impl TokenInformation {
         Ok(TokenInformation { buffer })
     }
 
+    /// Returns the underlying allocated buffer as the specified type.
+    /// Marked as `unsafe` due to the missing guarantees of the caller
+    /// using it as the intended allocated type.
     pub unsafe fn info<T>(&self) -> &T {
         &*(self.buffer.as_ptr() as *const T)
     }
 
+    /// Returns the underlying allocated buffer as the specified type.
+    /// Marked as `unsafe` due to the missing guarantees of the caller
+    /// using it as the intended allocated type.
     pub unsafe fn info_mut<T>(&mut self) -> &mut T {
         &mut *(self.buffer.as_mut_ptr() as *mut T)
     }
