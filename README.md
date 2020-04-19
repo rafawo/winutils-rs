@@ -11,6 +11,13 @@ The main reason this crate exists is to have a common crate that [virtdisk-rs](h
 
 This section briefly describes all published crates.io [versions](https://crates.io/crates/winutils-rs/versions) of this project, ordered from latest to oldest.
 
+- [**0.2.2 Apr 18, 2020**](https://crates.io/crates/winutils-rs/0.2.2)
+  - Added `LocalMemory`
+  - Added `hresult_message`, `lasterror_if` and `lasterror_if_win32_bool_false`
+  - Added `LocalDAcl`
+  - Added `LocalSecurityDescriptor`
+  - Added `TokenInformation`
+  - Added `ComLibraryRuntime`
 - [**0.2.1 Dec 10, 2019**](https://crates.io/crates/winutils-rs/0.2.1)
   - Fixed CotaskMemWString and LocalWString to actually use a pointer
 - [**0.2.0 Mar 15, 2019**](https://crates.io/crates/winutils-rs/0.2.0)
