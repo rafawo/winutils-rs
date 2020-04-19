@@ -1122,7 +1122,7 @@ impl ComLibraryRuntime {
         let token_primary_group =
             TokenInformation::new(winapi::um::winnt::TokenPrimaryGroup, std::ptr::null_mut())?;
         lasterror_if_win32_bool_false(unsafe {
-            winapi::um::securitybaseapi::SetSecurityDescriptorOwner(
+            winapi::um::securitybaseapi::SetSecurityDescriptorGroup(
                 sec_desc.get(),
                 token_primary_group
                     .info::<winapi::um::winnt::TOKEN_PRIMARY_GROUP>()
