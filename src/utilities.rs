@@ -1131,6 +1131,7 @@ impl ComLibraryRuntime {
             )
         })?;
 
+        sec_desc.make_absolute()?;
         let dacl = sec_desc.add_user_dacl(unsafe {
             token_user.info::<winapi::um::winnt::TOKEN_USER>().User.Sid
         })?;
