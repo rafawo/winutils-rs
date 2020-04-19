@@ -643,9 +643,7 @@ impl LocalMemory {
     /// Frees the wrapped raw pointer using `LocalFree`, if valid.
     pub fn force_free(&mut self) {
         if self.valid_ptr() {
-            unsafe {
-                winapi::um::winbase::LocalFree(self.ptr);
-            }
+            unsafe { winapi::um::winbase::LocalFree(self.ptr) };
             self.ptr = std::ptr::null_mut();
         }
     }
@@ -1133,23 +1131,23 @@ impl ComLibraryRuntime {
         })?;
 
         sec_desc.make_absolute()?;
-        let dacl = sec_desc.add_user_dacl(unsafe {
-            token_user.info::<winapi::um::winnt::TOKEN_USER>().User.Sid
-        })?;
+        let mut dacl = sec_desc
+            .add_user_dacl(unsafe { token_user.info::<winapi::um::winnt::TOKEN_USER>().User.Sid })?
+            .unwrap_or_default();
 
         sec_desc.make_absolute()?;
         lasterror_if_win32_bool_false(unsafe {
             winapi::um::securitybaseapi::SetSecurityDescriptorDacl(
                 sec_desc.get(),
                 winapi::shared::minwindef::TRUE,
-                dacl.unwrap_or_default().get_mut(),
+                dacl.get_mut(),
                 winapi::shared::minwindef::FALSE,
             )
         })?;
 
         sec_desc.make_absolute()?;
 
-        let result = match unsafe {
+        match unsafe {
             winapi::um::combaseapi::CoInitializeSecurity(
                 sec_desc.get(),
                 -1,
@@ -1166,13 +1164,6 @@ impl ComLibraryRuntime {
                 Err(error_code_to_winresult_code(hresult as u32))
             }
             _ => Ok(()),
-        };
-
-        // Ensure variables stay in scope when calling CoInitializeSecurity
-        drop(dacl);
-        drop(token_primary_group);
-        drop(token_user);
-
-        result
+        }
     }
 }
