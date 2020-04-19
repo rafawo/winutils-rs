@@ -593,11 +593,7 @@ pub struct LocalMemory {
 
 impl std::ops::Drop for LocalMemory {
     fn drop(&mut self) {
-        if self.ptr != std::ptr::null_mut() {
-            unsafe {
-                winapi::um::winbase::LocalFree(self.ptr);
-            }
-        }
+        self.force_free();
     }
 }
 
@@ -611,14 +607,35 @@ impl LocalMemory {
         Ok(LocalMemory { ptr })
     }
 
+    pub fn new_empty() -> Self {
+        Self::from_raw(std::ptr::null_mut())
+    }
+
     pub fn from_raw(ptr: winapi::um::winnt::PVOID) -> Self {
         LocalMemory { ptr }
+    }
+
+    pub fn valid_ptr(&self) -> bool {
+        self.ptr != std::ptr::null_mut()
     }
 
     pub unsafe fn release(&mut self) -> winapi::um::winnt::PVOID {
         let ptr = self.ptr;
         self.ptr = std::ptr::null_mut();
         ptr
+    }
+
+    pub fn reset(&mut self, ptr: winapi::um::winnt::PVOID) {
+        self.force_free();
+        self.ptr = ptr;
+    }
+
+    pub fn force_free(&mut self) {
+        if self.valid_ptr() {
+            unsafe {
+                winapi::um::winbase::LocalFree(self.ptr);
+            }
+        }
     }
 
     pub unsafe fn ptr<T>(&self) -> *const T {
@@ -710,6 +727,28 @@ pub fn lasterror_if_win32_bool_false(result: Bool) -> WinResult<()> {
     lasterror_if(result == winapi::shared::minwindef::FALSE)
 }
 
+pub struct LocalDAcl {
+    local_mem: LocalMemory,
+}
+
+impl LocalDAcl {
+    pub fn get(&self) -> &winapi::um::winnt::ACL {
+        unsafe { &*(self.local_mem.ptr as *const winapi::um::winnt::ACL) }
+    }
+
+    pub fn get_mut(&mut self) -> &mut winapi::um::winnt::ACL {
+        unsafe { &mut *(self.local_mem.ptr_mut() as *mut winapi::um::winnt::ACL) }
+    }
+}
+
+impl Default for LocalDAcl {
+    fn default() -> Self {
+        LocalDAcl {
+            local_mem: LocalMemory::new_empty(),
+        }
+    }
+}
+
 /// Thin Rust wrapper of a `SECURITY_DESCRIPTOR` pointer that can be used to
 /// receive return parameters from windows API that use LocalAlloc under the covers.
 /// On drop, frees the memory using LocalFree.
@@ -757,6 +796,12 @@ impl LocalSecurityDescriptor {
         let ptr = self.ptr;
         self.ptr = std::ptr::null_mut();
         ptr
+    }
+
+    /// Frees the underlying ptr, if any, and changes the wrapped pointer to the supplied one.
+    pub fn reset(&mut self, ptr: winapi::um::winnt::PSECURITY_DESCRIPTOR) {
+        self.force_free();
+        self.ptr = ptr;
     }
 
     /// Forces a LocalFree of the underlying pointer.
@@ -863,6 +908,73 @@ impl LocalSecurityDescriptor {
 
         Ok(())
     }
+
+    pub fn get_dacl(&self) -> WinResult<Option<LocalDAcl>> {
+        let mut present: Bool = 0;
+        let mut defaulted: Bool = 0;
+        let mut pdacl: winapi::um::winnt::PACL = std::ptr::null_mut();
+
+        lasterror_if_win32_bool_false(unsafe {
+            winapi::um::securitybaseapi::GetSecurityDescriptorDacl(
+                self.get(),
+                &mut present,
+                &mut pdacl,
+                &mut defaulted,
+            )
+        })?;
+
+        if present == winapi::shared::minwindef::FALSE {
+            Ok(None)
+        } else {
+            unsafe {
+                let mut dacl = LocalDAcl {
+                    local_mem: LocalMemory::new(0, (*pdacl).AclSize as usize)?,
+                };
+
+                winapi::um::winnt::RtlCopyMemory(
+                    dacl.local_mem.ptr_mut(),
+                    pdacl as *const _,
+                    (*pdacl).AclSize as usize,
+                );
+
+                Ok(Some(dacl))
+            }
+        }
+    }
+
+    pub fn add_user_dacl(&self, psid: winapi::um::winnt::PSID) -> WinResult<Option<LocalDAcl>> {
+        match self.get_dacl()? {
+            None => Ok(None),
+            Some(mut dacl) => {
+                let mut ea = winapi::um::accctrl::EXPLICIT_ACCESSW {
+                    grfAccessPermissions: winapi::um::combaseapi::COM_RIGHTS_EXECUTE
+                        | winapi::um::combaseapi::COM_RIGHTS_EXECUTE_LOCAL,
+                    grfAccessMode: winapi::um::accctrl::GRANT_ACCESS,
+                    grfInheritance: winapi::um::accctrl::NO_INHERITANCE,
+                    Trustee: winapi::um::accctrl::TRUSTEE_W {
+                        pMultipleTrustee: std::ptr::null_mut(),
+                        MultipleTrusteeOperation: winapi::um::accctrl::NO_MULTIPLE_TRUSTEE,
+                        TrusteeForm: winapi::um::accctrl::TRUSTEE_IS_SID,
+                        TrusteeType: winapi::um::accctrl::TRUSTEE_IS_UNKNOWN,
+                        ptstrName: psid as winapi::um::winnt::LPWCH,
+                    },
+                };
+
+                let mut pdacl: winapi::um::winnt::PACL = std::ptr::null_mut();
+                match unsafe {
+                    winapi::um::aclapi::SetEntriesInAclW(1, &mut ea, dacl.get_mut(), &mut pdacl)
+                } {
+                    error if error != winapi::shared::winerror::ERROR_SUCCESS => {
+                        Err(error_code_to_winresult_code(error))
+                    }
+                    _ => {
+                        dacl.local_mem.reset(pdacl as *mut _);
+                        Ok(Some(dacl))
+                    }
+                }
+            }
+        }
+    }
 }
 
 pub struct TokenInformation {
@@ -958,34 +1070,34 @@ impl ComLibraryRuntime {
 
     /// Sets up COM security with the specified security string descriptor.
     pub fn setup_security(sec_str_desc: &str) -> WinResult<()> {
-        let mut desc = LocalSecurityDescriptor::new();
+        let mut sec_desc = LocalSecurityDescriptor::new();
         lasterror_if_win32_bool_false(unsafe {
             winapi::shared::sddl::ConvertStringSecurityDescriptorToSecurityDescriptorW(
                 widestring::WideCString::from_str(sec_str_desc)
                     .unwrap()
                     .as_ptr(),
                 winapi::shared::sddl::SDDL_REVISION_1.into(),
-                desc.ptr_mut(),
+                sec_desc.ptr_mut(),
                 std::ptr::null_mut(),
             )
         })?;
 
-        desc.make_absolute()?;
+        sec_desc.make_absolute()?;
         let token_user = TokenInformation::new(winapi::um::winnt::TokenUser, std::ptr::null_mut())?;
         lasterror_if_win32_bool_false(unsafe {
             winapi::um::securitybaseapi::SetSecurityDescriptorOwner(
-                desc.get(),
+                sec_desc.get(),
                 token_user.info::<winapi::um::winnt::TOKEN_USER>().User.Sid,
                 winapi::shared::minwindef::FALSE,
             )
         })?;
 
-        desc.make_absolute()?;
+        sec_desc.make_absolute()?;
         let token_primary_group =
             TokenInformation::new(winapi::um::winnt::TokenPrimaryGroup, std::ptr::null_mut())?;
         lasterror_if_win32_bool_false(unsafe {
             winapi::um::securitybaseapi::SetSecurityDescriptorOwner(
-                desc.get(),
+                sec_desc.get(),
                 token_primary_group
                     .info::<winapi::um::winnt::TOKEN_PRIMARY_GROUP>()
                     .PrimaryGroup,
@@ -993,6 +1105,39 @@ impl ComLibraryRuntime {
             )
         })?;
 
-        Ok(())
+        let dacl = sec_desc.add_user_dacl(unsafe {
+            token_user.info::<winapi::um::winnt::TOKEN_USER>().User.Sid
+        })?;
+
+        sec_desc.make_absolute()?;
+        lasterror_if_win32_bool_false(unsafe {
+            winapi::um::securitybaseapi::SetSecurityDescriptorDacl(
+                sec_desc.get(),
+                winapi::shared::minwindef::TRUE,
+                dacl.unwrap_or_default().get_mut(),
+                winapi::shared::minwindef::FALSE,
+            )
+        })?;
+
+        sec_desc.make_absolute()?;
+
+        match unsafe {
+            winapi::um::combaseapi::CoInitializeSecurity(
+                sec_desc.get(),
+                -1,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                winapi::shared::rpcdce::RPC_C_AUTHN_LEVEL_PKT_INTEGRITY,
+                winapi::shared::rpcdce::RPC_C_IMP_LEVEL_IDENTIFY,
+                std::ptr::null_mut(),
+                winapi::um::objidl::EOAC_DYNAMIC_CLOAKING | winapi::um::objidlbase::EOAC_RESERVED1,
+                std::ptr::null_mut(),
+            )
+        } {
+            hresult if hresult != winapi::shared::winerror::S_OK => {
+                Err(error_code_to_winresult_code(hresult as u32))
+            }
+            _ => Ok(()),
+        }
     }
 }
